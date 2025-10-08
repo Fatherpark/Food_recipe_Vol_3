@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI-Powered Daycare Menu Planner (Gemini 2.5 Pro)</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'primary-blue': '#4a7bed',
+                        'secondary-yellow': '#ffd369',
+                        'pastel-green': '#a8e6cf',
+                        'soft-pink': '#ffaaa5',
+                        'category-active': '#e0e7ff', /* Light blue for active category */
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Basic styling setup */
+        body {
+            background-color: #f7f9fc;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            padding: 20px;
+        }
+        .container {
+            max-width: 800px;
+            width: 100%;
+            margin-top: 20px;
+        }
+        .input-area, .output-area {
+            background: white;
+            border-radius: 1rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            padding: 2rem;
+            margin-bottom: 2rem;
+        }
+        .loading-spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            border-left-color: #4a7bed;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        /* Recipe Card Styling */
+        .recipe-card {
+            border: 1px solid #e0e7ff;
+            background-color: #f0f4ff;
+        }
+        .instruction-step {
+            display: flex;
+            align-items: flex-start;
+            margin-bottom: 0.75rem;
+        }
+        .step-number {
+            background-color: #4a7bed;
+            color: white;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            flex-shrink: 0;
+            margin-right: 0.75rem;
+            font-size: 0.875rem;
+        }
+        /* Custom category styling for the left pane */
+        .category-item {
+            padding: 0.5rem;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            margin-bottom: 0.25rem;
+        }
+        .category-item:hover:not(.active) {
+            background-color: #f3f4f6;
+        }
+        .category-item.active {
+            background-color: var(--tw-colors-category-active);
+            font-weight: 600;
+            border: 1px solid var(--tw-colors-primary-blue);
+        }
+        
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .container {
+                padding: 0 10px;
+            }
+            .input-area, .output-area {
+                padding: 1rem;
+            }
+        }
+    </style>
+</head>
+<body class="font-sans">
+
+    <div class="container">
+        <h1 class="text-4xl font-bold text-center text-primary-blue mb-8">
+            <span class="text-secondary-yellow">🇨🇦</span> AI-Powered Daycare Menu Planner (Gemini 2.5 Pro)
+        </h1>
+        
+        <!-- Input Area -->
+        <div class="input-area">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4">Lunch Menu Idea Generation Conditions</h2>
+            
+            <!-- Ingredient Selection (Two-Column Hierarchical) -->
+            <div class="mb-6">
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                    ✅ Select Available Ingredients (Simulated CNF Items)
+                </label>
+                <!-- Filter input is now above the two-column selector -->
+                <input type="text" id="ingredientFilter" placeholder="Type to filter the displayed sub-ingredients..." class="w-full p-3 border border-gray-300 rounded-lg focus:ring-primary-blue focus:border-primary-blue mb-4">
+                
+                <div class="flex flex-col md:flex-row gap-4">
+                    <!-- Left Column: Categories -->
+                    <div id="categorySelector" class="w-full md:w-1/3 p-3 border border-gray-300 rounded-lg max-h-60 overflow-y-auto">
+                        <!-- Categories will be rendered here -->
+                        <p class="text-center text-gray-500 text-sm py-4">Loading categories...</p>
+                    </div>
+
+                    <!-- Right Column: Sub-Ingredients -->
+                    <div class="w-full md:w-2/3">
+                        <div id="subIngredientList" class="p-3 border border-gray-300 rounded-lg max-h-60 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-2 h-full">
+                            <p class="text-center text-gray-500 col-span-full mt-12">Select a category on the left to view ingredients.</p>
+                        </div>
+                    </div>
+                </div>
+                <p class="mt-2 text-xs text-gray-500">Select only the ingredients you currently have on hand.</p>
+            </div>
+            
+            <!-- Allergy Selection (Checkboxes) -->
+            <div class="mb-6">
+                <label for="allergyFilter" class="block text-sm font-medium text-red-600 mb-2">
+                    🚫 Select Allergies/Restrictions to Strictly Avoid
+                </label>
+                <input type="text" id="allergyFilter" placeholder="Type to filter allergens (e.g., milk, soy)..." class="w-full p-3 border border-red-300 rounded-lg focus:ring-soft-pink focus:border-soft-pink mb-4">
+                
+                <!-- Optimized for mobile: 1 column by default, 2 on small screens (sm), 3 on large (lg) -->
+                <div id="allergyList" class="max-h-48 overflow-y-auto p-3 border border-red-300 rounded-lg grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                    <!-- Checkboxes will be rendered here by JavaScript -->
+                </div>
+                <p class="mt-2 text-xs text-gray-500">Select all known allergies or dietary restrictions that must be excluded.</p>
+            </div>
+            
+            <button id="generateBtn" 
+                    class="w-full flex justify-center items-center px-4 py-3 bg-primary-blue text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-300 focus:outline-none focus:ring-2 focus:ring-primary-blue focus:ring-opacity-50">
+                Generate AI Menu Idea (Internet Required)
+            </button>
+        </div>
+        
+        <!-- Output Area -->
+        <div class="output-area">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4">AI-Generated Custom Recipe</h2>
+            <div id="loading" class="hidden flex justify-center items-center py-8">
+                <div class="loading-spinner"></div>
+                <p class="ml-3 text-primary-blue font-medium">AI is generating a menu that meets the conditions...</p>
+            </div>
+            <div id="recipeOutput" class="space-y-6">
+                <p class="text-gray-500 text-center py-4">Select ingredients and allergy conditions and press the 'Generate AI Menu Idea' button.</p>
+            </div>
+        </div>
+
+        <!-- Message Modal -->
+        <div id="modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center z-50 transition-opacity duration-300">
+            <div class="bg-white p-6 rounded-xl shadow-2xl max-w-sm w-full">
+                <h3 id="modalTitle" class="text-xl font-bold mb-4 text-primary-blue">Notification</h3>
+                <p id="modalMessage" class="mb-6 text-gray-700">Message content</p>
+                <button onclick="closeModal()" class="w-full py-2 bg-primary-blue text-white rounded-lg hover:bg-blue-600">OK</button>
+            </div>
+        </div>
+
+    </div>
+
+    <script type="module">
+        const generateBtn = document.getElementById('generateBtn');
+        const recipeOutput = document.getElementById('recipeOutput');
+        const loadingDiv = document.getElementById('loading');
+        
+        // Ingredient Elements
+        const categorySelectorDiv = document.getElementById('categorySelector');
+        const subIngredientListDiv = document.getElementById('subIngredientList');
+        const ingredientFilterInput = document.getElementById('ingredientFilter');
+
+        // Allergy Elements
+        const allergyListDiv = document.getElementById('allergyList');
+        const allergyFilterInput = document.getElementById('allergyFilter');
+
+        // Global state to track all checked ingredients across categories
+        const checkedIngredientsState = new Set();
+        let activeCategory = null;
+
+        // ** Hierarchical Ingredient Data Structure **
+        const categorizedIngredients = {
+            "Protein (Meat/Fish/Legume)": [
+                "Chicken Breast (cooked)", "Ground Turkey (lean)", "White Fish (Cod/Tilapia)", 
+                "Tofu (Firm)", "Red Lentils (dried)", "Black Beans (canned, rinsed)", "Chickpeas (canned, rinsed)"
+            ],
+            "Grains & Starches": [
+                "Whole Wheat Flour", "Oats (Rolled)", "Quinoa", "Brown Rice", "Whole Grain Pasta", "Sweet Potato"
+            ],
+            "Vegetables": [
+                "Spinach (Fresh)", "Carrots", "Broccoli", "Cauliflower"
+            ],
+            "Fruits": [
+                "Apple", "Banana", "Pear", "Berries (Frozen)", "Orange"
+            ],
+            "Dairy/Alternatives & Eggs": [
+                "Milk (Almond/Soy Substitute)", "Yogurt (Plain, Soy/Coconut)", "Eggs", "Cheddar Cheese (low sodium)"
+            ]
+        };
+        
+        // ** Flattened list for easy API data collection **
+        const cnfIngredientsFlat = Object.values(categorizedIngredients).flat();
+        
+        // ** Common Allergens List for Daycare (Simulated) **
+        const commonAllergens = [
+            "Peanut", "Tree Nuts (e.g., Almond, Walnut, Cashew)", "Milk (Dairy)", "Egg", 
+            "Soy", "Wheat (Gluten)", "Fish", "Shellfish", "Sesame",
+            "Pork", "Honey (Under 1 Year)", "Caffeine (Avoid)", "Sulphites"
+        ];
+        
+        // ** AI Communication Settings **
+        const apiKey = ""; 
+        // --- MODEL CHANGED TO GEMINI 2.5 PRO ---
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+        // ----------------------------------------
+        
+        // System prompt remains the same
+        const systemPrompt = "You are an expert in Canadian daycare meal planning. You must only use the provided ingredient list, strictly adhere to the allergy list, and generate exactly one recipe suitable for toddlers (low-sodium/eco-friendly diet) in JSON format only. All ingredients must be clearly specified with quantities in grams (g), milliliters (ml), or cups. The servingSize must be fixed to '10 servings for children'.";
+
+        // Exponential backoff logic for API calls
+        async function fetchWithBackoff(url, options, maxRetries = 5) {
+            for (let i = 0; i < maxRetries; i++) {
+                try {
+                    const response = await fetch(url, options);
+                    if (response.status === 429) { // Rate limit exceeded
+                        const delay = Math.pow(2, i) * 1000 + Math.random() * 1000;
+                        console.warn(`Rate limit hit. Retrying in ${delay / 1000}s...`);
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                        continue;
+                    }
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response;
+                } catch (error) {
+                    console.error('Fetch attempt failed:', error.message);
+                    if (i === maxRetries - 1) throw error;
+                    const delay = Math.pow(2, i) * 1000 + Math.random() * 1000;
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                }
+            }
+        }
+
+        // Modal functions
+        function showModal(title, message) {
+            document.getElementById('modalTitle').textContent = title;
+            document.getElementById('modalMessage').textContent = message;
+            document.getElementById('modal').classList.remove('hidden');
+        }
+
+        window.closeModal = function() {
+            document.getElementById('modal').classList.add('hidden');
+        }
+
+        // =========================================================================
+        // CATEGORY/INGREDIENT RENDERING LOGIC
+        // =========================================================================
+
+        /**
+         * Renders the main category list (left column).
+         */
+        function renderCategories() {
+            categorySelectorDiv.innerHTML = '';
+            
+            Object.keys(categorizedIngredients).forEach(category => {
+                const categoryDiv = document.createElement('div');
+                categoryDiv.textContent = category;
+                categoryDiv.className = 'category-item text-gray-700';
+                categoryDiv.dataset.category = category;
+
+                categoryDiv.addEventListener('click', () => {
+                    // Update active state in UI
+                    document.querySelectorAll('.category-item').forEach(item => {
+                        item.classList.remove('active');
+                    });
+                    categoryDiv.classList.add('active');
+                    
+                    // Set active category and re-render sub-ingredients
+                    activeCategory = category;
+                    ingredientFilterInput.value = ''; // Clear filter on category change
+                    renderSubIngredients(category);
+                });
+
+                categorySelectorDiv.appendChild(categoryDiv);
+            });
+
+            // Automatically select the first category on load
+            if (Object.keys(categorizedIngredients).length > 0) {
+                const firstCategory = Object.keys(categorizedIngredients)[0];
+                document.querySelector(`[data-category="${firstCategory}"]`).click();
+            }
+        }
+
+        /**
+         * Renders the sub-ingredients list (right column) based on the selected category.
+         * @param {string} category The category key to display.
+         * @param {string} filterText Optional text to filter sub-ingredients.
+         */
+        function renderSubIngredients(category, filterText = '') {
+            subIngredientListDiv.innerHTML = '';
+            
+            const ingredients = categorizedIngredients[category] || [];
+            const filterLower = filterText.toLowerCase();
+            const filteredList = ingredients.filter(item => item.toLowerCase().includes(filterLower));
+
+            if (filteredList.length === 0) {
+                subIngredientListDiv.innerHTML = `<p class="text-center text-gray-500 col-span-full mt-12">No matching ingredients in ${category}.</p>`;
+                return;
+            }
+
+            filteredList.forEach(item => {
+                const checkboxId = `ing-${item.replace(/[^\w]/g, '-')}`;
+                const isChecked = checkedIngredientsState.has(item) ? 'checked' : '';
+                
+                const itemHtml = `
+                    <div class="flex items-center">
+                        <input type="checkbox" id="${checkboxId}" name="ingredient" value="${item}" ${isChecked} class="h-4 w-4 text-primary-blue border-gray-300 rounded focus:ring-primary-blue cursor-pointer">
+                        <label for="${checkboxId}" class="ml-2 text-sm font-medium text-gray-700 cursor-pointer">${item}</label>
+                    </div>
+                `;
+                subIngredientListDiv.innerHTML += itemHtml;
+            });
+
+            // Reattach event listeners to update the global state
+            subIngredientListDiv.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+                checkbox.addEventListener('change', (e) => {
+                    if (e.target.checked) {
+                        checkedIngredientsState.add(e.target.value);
+                    } else {
+                        checkedIngredientsState.delete(e.target.value);
+                    }
+                });
+            });
+        }
+        
+        // Filter listener for the sub-ingredients (only filters the currently active list)
+        ingredientFilterInput.addEventListener('input', (e) => {
+            if (activeCategory) {
+                renderSubIngredients(activeCategory, e.target.value);
+            }
+        });
+
+
+        // Function to render allergy checkboxes (same as before)
+        function renderAllergies(filterText = '') {
+            allergyListDiv.innerHTML = '';
+            const filterLower = filterText.toLowerCase();
+            const filteredList = commonAllergens.filter(item => item.toLowerCase().includes(filterLower));
+
+            if (filteredList.length === 0) {
+                allergyListDiv.innerHTML = '<p class="text-center text-gray-500 col-span-full">No allergens match your filter.</p>';
+                return;
+            }
+
+            const checkedValues = Array.from(document.querySelectorAll('#allergyList input[type="checkbox"]:checked')).map(cb => cb.value);
+
+            filteredList.forEach(item => {
+                const checkboxId = `alg-${item.replace(/[^\w]/g, '-')}`;
+                const isChecked = checkedValues.includes(item) ? 'checked' : '';
+                const itemHtml = `
+                    <div class="flex items-center">
+                        <input type="checkbox" id="${checkboxId}" name="allergy" value="${item}" ${isChecked} class="h-4 w-4 text-soft-pink border-red-300 rounded focus:ring-soft-pink cursor-pointer">
+                        <label for="${checkboxId}" class="ml-2 text-sm font-medium text-gray-700 cursor-pointer">${item}</label>
+                    </div>
+                `;
+                allergyListDiv.innerHTML += itemHtml;
+            });
+        }
+
+        // Initial render
+        document.addEventListener('DOMContentLoaded', () => {
+            renderCategories(); // Render the new category selector
+            renderAllergies();
+        });
+
+
+        generateBtn.addEventListener('click', async () => {
+            // 1. Collect selected ingredients from the global state
+            const ingredients = Array.from(checkedIngredientsState).join(', ');
+            
+            // 2. Collect selected allergies
+            const selectedAllergyCheckboxes = document.querySelectorAll('#allergyList input[type="checkbox"]:checked');
+            const allergies = Array.from(selectedAllergyCheckboxes).map(cb => cb.value).join(', ');
+
+
+            if (checkedIngredientsState.size === 0) {
+                showModal("Input Error", "Please select at least one ingredient.");
+                return;
+            }
+            
+            if (selectedAllergyCheckboxes.length === 0) {
+                // Warning if no allergies are selected, as daycare meals are strict
+                showModal("Input Error", "Please select at least one allergy or restriction. (If none, consider selecting a general restriction like 'Caffeine (Avoid)' for safety.)");
+                return;
+            }
+
+            // UI update: Start loading
+            recipeOutput.innerHTML = '';
+            loadingDiv.classList.remove('hidden');
+            generateBtn.disabled = true;
+            generateBtn.textContent = 'AI is generating the menu...';
+
+            const userQuery = `Please generate a recipe matching the following conditions.\n- Available Ingredients: ${ingredients}\n- Allergies/Forbidden Ingredients to Strictly Exclude: ${allergies}`;
+
+            // JSON Schema to guide the AI model's response structure
+            const responseSchema = {
+                type: "OBJECT",
+                properties: {
+                    "recipeName": { "type": "STRING", "description": "Name of the recipe" },
+                    "servingSize": { "type": "STRING", "description": "Serving size (e.g., 10 servings for children)" },
+                    "ingredientsList": { 
+                        "type": "ARRAY", 
+                        "items": { "type": "STRING", "description": "List of ingredients and quantities" } 
+                    },
+                    "instructions": { 
+                        "type": "ARRAY", 
+                        "items": { "type": "STRING", "description": "Step-by-step cooking instructions" } 
+                    },
+                    "allergyNotes": { "type": "STRING", "description": "Final verified allergy and precautions notes" }
+                },
+                required: ["recipeName", "servingSize", "ingredientsList", "instructions", "allergyNotes"],
+                propertyOrdering: ["recipeName", "servingSize", "ingredientsList", "instructions", "allergyNotes"]
+            };
+
+            const payload = {
+                contents: [{ parts: [{ text: userQuery }] }],
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    responseSchema: responseSchema
+                }
+            };
+
+            try {
+                const response = await fetchWithBackoff(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
+                const result = await response.json();
+                
+                // Parse AI response
+                if (result.candidates && result.candidates.length > 0 &&
+                    result.candidates[0].content && result.candidates[0].content.parts &&
+                    result.candidates[0].content.parts.length > 0) {
+                    
+                    const jsonText = result.candidates[0].content.parts[0].text;
+                    const recipe = JSON.parse(jsonText);
+                    
+                    renderRecipe(recipe);
+
+                } else {
+                    throw new Error("Could not find recipe in AI response or format is incorrect.");
+                }
+
+            } catch (error) {
+                console.error("Error generating AI recipe:", error);
+                const errorHtml = `
+                    <div class="p-4 bg-red-100 border-l-4 border-red-500 text-red-700 rounded-lg">
+                        <p class="font-bold">❌ Recipe Generation Failed</p>
+                        <p>An error occurred during AI communication. Please check your internet connection or try again. (${error.message})</p>
+                    </div>
+                `;
+                recipeOutput.innerHTML = errorHtml;
+                showModal("Communication Error", "Cannot communicate with the server to generate the recipe. Please try again shortly.");
+            } finally {
+                // UI update: Stop loading
+                loadingDiv.classList.add('hidden');
+                generateBtn.disabled = false;
+                generateBtn.textContent = 'Generate AI Menu Idea (Internet Required)';
+            }
+        });
+
+        // Function to render the recipe on the screen (common for both AI/Local versions)
+        function renderRecipe(recipe) {
+            const ingredientsHtml = recipe.ingredientsList.map(item => 
+                `<li class="flex items-center text-gray-700">
+                    <svg class="w-4 h-4 mr-2 text-pastel-green" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                    ${item}
+                </li>`
+            ).join('');
+
+            const instructionsHtml = recipe.instructions.map((step, index) => 
+                `<div class="instruction-step">
+                    <div class="step-number">${index + 1}</div>
+                    <p class="text-gray-700 flex-1">${step}</p>
+                </div>`
+            ).join('');
+
+            recipeOutput.innerHTML = `
+                <div class="recipe-card p-6 border rounded-xl">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-3xl font-extrabold text-primary-blue">${recipe.recipeName}</h3>
+                        <span class="px-3 py-1 bg-secondary-yellow text-gray-800 font-semibold text-sm rounded-full">${recipe.servingSize}</span>
+                    </div>
+
+                    <div class="mb-6 p-4 bg-white rounded-lg border border-pastel-green">
+                        <p class="font-bold text-lg text-pastel-green mb-2">🚫 AI-Generated Allergy and Precaution Notes</p>
+                        <p class="text-sm text-gray-700">${recipe.allergyNotes}</p>
+                    </div>
+
+                    <!-- Ingredients List -->
+                    <div class="mb-8">
+                        <p class="font-bold text-xl text-gray-800 mb-3 border-b pb-1">🍲 Required Ingredients</p>
+                        <ul class="list-none space-y-2 pl-0">
+                            ${ingredientsHtml}
+                        </ul>
+                    </div>
+
+                    <!-- Instructions -->
+                    <div>
+                        <p class="font-bold text-xl text-gray-800 mb-4 border-b pb-1">🔪 Cooking Steps</p>
+                        <div class="space-y-4">
+                            ${instructionsHtml}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+    </script>
+</body>
+</html>
